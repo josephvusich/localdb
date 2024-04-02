@@ -15,21 +15,21 @@ var errDetectPanic = errors.New("this should never happen")
 type DB struct {
 	opened time.Time
 	root   *sqlx.DB
-	schema *RawSchema
+	schema *SqlSchema
 }
 
-// Open creates or opens a database file using the provided RawSchema.
-// The database schema is upgraded to match RawSchema, if older.
+// Open creates or opens a database file using the provided SqlSchema.
+// The database schema is upgraded to match SqlSchema, if older.
 // Upgrading the schema always happens under transaction.
-// If the database contains a higher version number than RawSchema,
+// If the database contains a higher version number than SqlSchema,
 // or a non-zero, non-matching application_id, the upgrade
 // transaction is discarded, the database is closed, and the error
 // is returned.
 //
 // Note that PRAGMA application_id and user_version are reserved
-// for use by this library, and are set to the current RawSchema's
+// for use by this library, and are set to the current SqlSchema's
 // schemaId and version, respectively.
-func Open(file string, schema *RawSchema, vs VersionStorer) (*DB, error) {
+func Open(file string, schema *SqlSchema, vs VersionStorer) (*DB, error) {
 	now := time.Now()
 
 	sq, err := sqlx.Open("sqlite3", fmt.Sprintf("file:%s", file))

@@ -24,7 +24,7 @@ func (suite *DBTestSuite) SetupTest() {
 }
 
 func (suite *DBTestSuite) TestOpen() {
-	schema := NewRawSchema(`CREATE TABLE t ( foo TEXT, bar NUMERIC )`)
+	schema := NewSqlSchema(`CREATE TABLE t ( foo TEXT, bar NUMERIC )`)
 
 	vs := &SqliteVersion{}
 	db, err := Open(suite.DBFile, schema, vs)
@@ -42,7 +42,7 @@ func (suite *DBTestSuite) TestOpen() {
 }
 
 func (suite *DBTestSuite) TestUpgrade() {
-	schema := NewRawSchema(`CREATE TABLE t ( foo TEXT, bar NUMERIC )`)
+	schema := NewSqlSchema(`CREATE TABLE t ( foo TEXT, bar NUMERIC )`)
 	schema.DefineUpgrade(2, `
 ALTER TABLE t RENAME TO p;
 ALTER TABLE p ADD COLUMN extra TEXT;
@@ -75,7 +75,7 @@ func (suite *DBTestSuite) TestLegacyUpgrade() {
 
 	suite.Require().NoError(legacyDB.Close())
 
-	schema := NewRawSchema(`CREATE TABLE t ( foo TEXT, bar NUMERIC )`)
+	schema := NewSqlSchema(`CREATE TABLE t ( foo TEXT, bar NUMERIC )`)
 	schema.DefineUpgrade(2, `
 ALTER TABLE t RENAME TO p;
 ALTER TABLE p ADD COLUMN extra TEXT;

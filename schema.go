@@ -16,9 +16,9 @@ type Schema interface {
 	Upgrade(tx sqlx.Ext, currentVersion int32) (updatedVersion int32, err error)
 }
 
-type RawSchema struct {
+type SqlSchema struct {
 	// Default value is the CRC32C of rootSchema.
-	// Must not be altered once this RawSchema is
+	// Must not be altered once this SqlSchema is
 	// referenced by an open DB.
 	ID int32
 
@@ -31,13 +31,13 @@ type RawSchema struct {
 	legacy   SchemaLegacyHelper
 }
 
-func (s *RawSchema) ApplicationID() int32 {
+func (s *SqlSchema) ApplicationID() int32 {
 	return s.ID
 }
 
-// NewRawSchema initializes a new SQLite schema.
-func NewRawSchema(rootSchema string) *RawSchema {
-	return &RawSchema{
+// NewSqlSchema initializes a new SQLite schema.
+func NewSqlSchema(rootSchema string) *SqlSchema {
+	return &SqlSchema{
 		ID:            int32(crc32.Checksum([]byte(rootSchema), crc32cTable)),
 		VersionStorer: &SqliteVersion{},
 		versions:      []string{rootSchema},
@@ -46,11 +46,11 @@ func NewRawSchema(rootSchema string) *RawSchema {
 
 // DefineUpgrade registers a new version of the schema. DefineUpgrade only
 // affects subsequent Open calls, already-opened databases are
-// not affected. The root RawSchema version is always 1, so the
+// not affected. The root SqlSchema version is always 1, so the
 // first call to DefineUpgrade must have a newVersion equal to 2.
 // newSchema should contain all instructions necessary to
 // alter or migrate data to the new schema version.
-func (s *RawSchema) DefineUpgrade(newVersion int, newSchema string) {
+func (s *SqlSchema) DefineUpgrade(newVersion int, newSchema string) {
 	if len(s.versions)+1 != newVersion {
 		panic("non-incremental DefineUpgrade version")
 	}
@@ -86,7 +86,7 @@ func initDB(db *DB, schema Schema, vs VersionStorer) error {
 	})
 }
 
-func (s *RawSchema) Upgrade(tx sqlx.Ext, currentVersion int32) (newVersion int32, err error) {
+func (s *SqlSchema) Upgrade(tx sqlx.Ext, currentVersion int32) (newVersion int32, err error) {
 	newVersion = int32(len(s.versions))
 
 	for i := currentVersion; i < newVersion; i++ {
@@ -99,10 +99,10 @@ func (s *RawSchema) Upgrade(tx sqlx.Ext, currentVersion int32) (newVersion int32
 }
 
 // Creates a deep copy.
-func (s *RawSchema) copy() *RawSchema {
+func (s *SqlSchema) copy() *SqlSchema {
 	dupe := make([]string, len(s.versions))
 	copy(dupe, s.versions)
-	return &RawSchema{
+	return &SqlSchema{
 		ID:       s.ID,
 		versions: dupe,
 		legacy:   s.legacy,
