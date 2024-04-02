@@ -18,10 +18,6 @@ type DB struct {
 	schema *RawSchema
 }
 
-type OpenOptions struct {
-	AssumeVersion int32
-}
-
 // Open creates or opens a database file using the provided RawSchema.
 // The database schema is upgraded to match RawSchema, if older.
 // Upgrading the schema always happens under transaction.
