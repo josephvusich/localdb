@@ -12,8 +12,25 @@ var crc32cTable = crc32.MakeTable(crc32.Castagnoli)
 type SchemaLegacyHelper func(q sqlx.Queryer) (applicationId int32, userVersion int32, err error)
 
 type Schema interface {
+	// ApplicationID should be unique to
+	// this Schema. SqlSchema uses the CRC32
+	// of the root schema script.
 	ApplicationID() int32
+
+	// LatestVersion returns the highest
+	// version of a database supported
+	// by the Schema.
 	LatestVersion() int32
+
+	// Copy must perform a deep copy,
+	// ensuring that a given database
+	// connection Schema will not be
+	// modified by other writers.
+	Copy() Schema
+
+	// Upgrade the database, if necessary.
+	// Returns the new version, which may
+	// be the same as the current version.
 	Upgrade(tx sqlx.Ext, currentVersion int32) (updatedVersion int32, err error)
 }
 
@@ -107,8 +124,7 @@ func (s *SqlSchema) Upgrade(tx sqlx.Ext, currentVersion int32) (newVersion int32
 	return newVersion, nil
 }
 
-// Creates a deep copy.
-func (s *SqlSchema) copy() *SqlSchema {
+func (s *SqlSchema) Copy() Schema {
 	dupe := make([]string, len(s.versions))
 	copy(dupe, s.versions)
 	return &SqlSchema{

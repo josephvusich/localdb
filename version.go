@@ -44,6 +44,8 @@ func (f *FallbackVersion) GetUserVersion(tx sqlx.Queryer) (userVersion int32, er
 	return f.FallbackReader.GetUserVersion(tx)
 }
 
+// SqliteVersion stores version information in
+// the application_id and user_version fields.
 type SqliteVersion struct{}
 
 func (sv *SqliteVersion) queryPragma(tx sqlx.Queryer, pragma string) (appId int32, err error) {

@@ -15,7 +15,7 @@ var errDetectPanic = errors.New("this should never happen")
 type DB struct {
 	opened time.Time
 	root   *sqlx.DB
-	schema *SqlSchema
+	schema Schema
 }
 
 // Open creates or opens a database file using the provided SqlSchema.
@@ -29,7 +29,7 @@ type DB struct {
 // Note that PRAGMA application_id and user_version are reserved
 // for use by this library, and are set to the current SqlSchema's
 // schemaId and version, respectively.
-func Open(file string, schema *SqlSchema, vs VersionStorer) (*DB, error) {
+func Open(file string, schema Schema, vs VersionStorer) (*DB, error) {
 	now := time.Now()
 
 	sq, err := sqlx.Open("sqlite3", fmt.Sprintf("file:%s", file))
@@ -47,7 +47,7 @@ func Open(file string, schema *SqlSchema, vs VersionStorer) (*DB, error) {
 	db := &DB{
 		opened: now,
 		root:   sq,
-		schema: schema.copy(),
+		schema: schema.Copy(),
 	}
 
 	if err = initDB(db, schema, vs); err != nil {
