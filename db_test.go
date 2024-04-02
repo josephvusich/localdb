@@ -27,7 +27,7 @@ func (suite *DBTestSuite) TestOpen() {
 	schema := NewSqlSchema(`CREATE TABLE t ( foo TEXT, bar NUMERIC )`)
 
 	vs := &SqliteVersion{}
-	db, err := Open(suite.DBFile, schema, vs)
+	db, err := Open(OpenOptions{File: suite.DBFile, Schema: schema, VersionStorer: vs})
 	suite.Require().NoError(err)
 
 	appId, err := vs.GetApplicationId(db.Handle())
@@ -49,7 +49,7 @@ ALTER TABLE p ADD COLUMN extra TEXT;
 `)
 
 	vs := &SqliteVersion{}
-	db, err := Open(suite.DBFile, schema, vs)
+	db, err := Open(OpenOptions{File: suite.DBFile, Schema: schema, VersionStorer: vs})
 	suite.Require().NoError(err)
 
 	_, err = db.Handle().Exec(`INSERT INTO p (foo, bar, extra) VALUES (?, ?, ?)`, "f", 2, "foobar")
@@ -89,7 +89,7 @@ ALTER TABLE p ADD COLUMN extra TEXT;
 		},
 	}
 
-	db, err := Open(suite.DBFile, schema, legacy)
+	db, err := Open(OpenOptions{File: suite.DBFile, Schema: schema, VersionStorer: legacy})
 	suite.Require().NoError(err)
 
 	suite.Require().Equal(1, legacy.FallbackReader.(*mockReader).callAppId)
@@ -109,7 +109,7 @@ ALTER TABLE p ADD COLUMN extra TEXT;
 	suite.Require().NoError(db.Close())
 
 	// Re-open to make sure LegacyMetadata is not called twice
-	_, err = Open(suite.DBFile, schema, legacy)
+	_, err = Open(OpenOptions{File: suite.DBFile, Schema: schema, VersionStorer: legacy})
 	suite.Require().NoError(err)
 
 	suite.Require().Equal(1, legacy.FallbackReader.(*mockReader).callAppId)

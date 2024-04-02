@@ -18,6 +18,17 @@ type DB struct {
 	schema Schema
 }
 
+type OpenOptions struct {
+	// File provides the path to the database itself.
+	File string
+
+	// Schema to use for database upgrades.
+	Schema Schema
+
+	// Optional, defaults to SqliteVersion.
+	VersionStorer VersionStorer
+}
+
 // Open creates or opens a database file using the provided SqlSchema.
 // The database schema is upgraded to match SqlSchema, if older.
 // Upgrading the schema always happens under transaction.
@@ -29,10 +40,10 @@ type DB struct {
 // Note that PRAGMA application_id and user_version are reserved
 // for use by this library, and are set to the current SqlSchema's
 // schemaId and version, respectively.
-func Open(file string, schema Schema, vs VersionStorer) (*DB, error) {
+func Open(options OpenOptions) (*DB, error) {
 	now := time.Now()
 
-	sq, err := sqlx.Open("sqlite3", fmt.Sprintf("file:%s", file))
+	sq, err := sqlx.Open("sqlite3", fmt.Sprintf("file:%s", options.File))
 	if err != nil {
 		return nil, err
 	}
@@ -47,10 +58,10 @@ func Open(file string, schema Schema, vs VersionStorer) (*DB, error) {
 	db := &DB{
 		opened: now,
 		root:   sq,
-		schema: schema.Copy(),
+		schema: options.Schema.Copy(),
 	}
 
-	if err = initDB(db, schema, vs); err != nil {
+	if err = initDB(db, options.Schema, options.VersionStorer); err != nil {
 		return nil, err
 	}
 
