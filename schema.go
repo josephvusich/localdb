@@ -13,6 +13,7 @@ type SchemaLegacyHelper func(q sqlx.Queryer) (applicationId int32, userVersion i
 
 type Schema interface {
 	ApplicationID() int32
+	LatestVersion() int32
 	Upgrade(tx sqlx.Ext, currentVersion int32) (updatedVersion int32, err error)
 }
 
@@ -77,6 +78,10 @@ func initDB(db *DB, schema Schema, vs VersionStorer) error {
 			return err
 		}
 
+		if userVersion > schema.LatestVersion() {
+			return fmt.Errorf("user_version (%d) is higher than the schema version (%d)", userVersion, schema.LatestVersion())
+		}
+
 		newVersion, err := schema.Upgrade(tx, userVersion)
 		if err != nil {
 			return err
@@ -86,8 +91,12 @@ func initDB(db *DB, schema Schema, vs VersionStorer) error {
 	})
 }
 
+func (s *SqlSchema) LatestVersion() int32 {
+	return int32(len(s.versions))
+}
+
 func (s *SqlSchema) Upgrade(tx sqlx.Ext, currentVersion int32) (newVersion int32, err error) {
-	newVersion = int32(len(s.versions))
+	newVersion = s.LatestVersion()
 
 	for i := currentVersion; i < newVersion; i++ {
 		if _, err := tx.Exec(s.versions[i]); err != nil {
