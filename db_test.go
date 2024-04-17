@@ -23,6 +23,24 @@ func (suite *DBTestSuite) SetupTest() {
 	suite.DBFile = filepath.Join(suite.T().TempDir(), "test.db")
 }
 
+func (suite *DBTestSuite) TestAssembleDSN() {
+	result, err := assembleDSN(suite.DBFile, nil)
+	suite.Require().NoError(err)
+	suite.Require().Equal(suite.DBFile, result)
+
+	result, err = assembleDSN("test.db?foo=bar", nil)
+	suite.Require().NoError(err)
+	suite.Require().Equal("test.db?foo=bar", result)
+
+	result, err = assembleDSN("test.db", map[string]string{"fizz": "buzz"})
+	suite.Require().NoError(err)
+	suite.Require().Equal("test.db?fizz=buzz", result)
+
+	result, err = assembleDSN("test.db?foo=bar", map[string]string{"fizz": "buzz"})
+	suite.Require().NoError(err)
+	suite.Require().Equal("test.db?fizz=buzz&foo=bar", result)
+}
+
 func (suite *DBTestSuite) TestOpen() {
 	schema := NewSqlSchema(`CREATE TABLE t ( foo TEXT, bar NUMERIC )`)
 

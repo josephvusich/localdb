@@ -3,6 +3,8 @@ package localdb
 import (
 	"errors"
 	"fmt"
+	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -27,6 +29,40 @@ type OpenOptions struct {
 
 	// Optional, defaults to SqliteVersion.
 	VersionStorer VersionStorer
+
+	// Connection options, see https://github.com/mattn/go-sqlite3
+	// These are added to any baked-in options in File.
+	DSNOptions map[string]string
+}
+
+func assembleDSN(inputDSN string, dsnOpts map[string]string) (dsn string, err error) {
+	parts := strings.SplitN(inputDSN, "?", 2)
+
+	if len(parts) == 1 && (dsnOpts == nil || len(dsnOpts) == 0) {
+		return inputDSN, nil
+	}
+
+	var flags url.Values
+	if len(parts) == 2 {
+		flags, err = url.ParseQuery(parts[1])
+		if err != nil {
+			return "", fmt.Errorf("unable to parse input DSN: %w", err)
+		}
+	} else {
+		flags = url.Values{}
+	}
+
+	if dsnOpts != nil {
+		for k, v := range dsnOpts {
+			flags.Add(k, v)
+		}
+	}
+
+	dsn = parts[0]
+	if len(flags) != 0 {
+		dsn += "?" + flags.Encode()
+	}
+	return dsn, nil
 }
 
 // Open creates or opens a database file using the provided SqlSchema.
@@ -43,7 +79,12 @@ type OpenOptions struct {
 func Open(options OpenOptions) (*DB, error) {
 	now := time.Now()
 
-	sq, err := sqlx.Open("sqlite3", fmt.Sprintf("file:%s", options.File))
+	dsn, err := assembleDSN(options.File, options.DSNOptions)
+	if err != nil {
+		return nil, fmt.Errorf("error assembling DSN: %w", err)
+	}
+
+	sq, err := sqlx.Open("sqlite3", fmt.Sprintf("file:%s", dsn))
 	if err != nil {
 		return nil, err
 	}
