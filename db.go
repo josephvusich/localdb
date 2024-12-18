@@ -102,7 +102,12 @@ func Open(options OpenOptions) (*DB, error) {
 		schema: options.Schema.Copy(),
 	}
 
-	if err = initDB(db, options.Schema, options.VersionStorer); err != nil {
+	vs := options.VersionStorer
+	if vs == nil {
+		vs = &SqliteVersion{}
+	}
+
+	if err = initDB(db, options.Schema, vs); err != nil {
 		return nil, err
 	}
 

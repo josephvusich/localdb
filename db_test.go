@@ -44,10 +44,10 @@ func (suite *DBTestSuite) TestAssembleDSN() {
 func (suite *DBTestSuite) TestOpen() {
 	schema := NewSqlSchema(`CREATE TABLE t ( foo TEXT, bar NUMERIC )`)
 
-	vs := &SqliteVersion{}
-	db, err := Open(OpenOptions{File: suite.DBFile, Schema: schema, VersionStorer: vs})
+	db, err := Open(OpenOptions{File: suite.DBFile, Schema: schema})
 	suite.Require().NoError(err)
 
+	vs := &SqliteVersion{}
 	appId, err := vs.GetApplicationId(db.Handle())
 	suite.Require().NoError(err)
 	suite.Require().Equal(schema.ID, appId)
