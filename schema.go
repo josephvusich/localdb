@@ -3,6 +3,8 @@ package localdb
 import (
 	"fmt"
 	"hash/crc32"
+	"os"
+	"path/filepath"
 
 	"github.com/jmoiron/sqlx"
 )
@@ -75,28 +77,42 @@ func (s *SqlSchema) DefineUpgrade(newVersion int, newSchema string) {
 	s.versions = append(s.versions, newSchema)
 }
 
-func initDB(db *DB, schema Schema, vs VersionStorer) error {
+func initDB(db *DB, options OpenOptions, vs VersionStorer) error {
+	schema := options.Schema
+
+	applicationId, err := vs.GetApplicationId(db.Handle())
+	if err != nil {
+		return err
+	}
+
+	if applicationId != 0 && applicationId != schema.ApplicationID() {
+		return fmt.Errorf("application_id (%d) does not match schema ID (%d)", applicationId, schema.ApplicationID())
+	}
+
+	userVersion, err := vs.GetUserVersion(db.Handle())
+	if err != nil {
+		return err
+	}
+
+	if userVersion > schema.LatestVersion() {
+		return fmt.Errorf("user_version (%d) is higher than the schema version (%d)", userVersion, schema.LatestVersion())
+	}
+
+	if applicationId == schema.ApplicationID() && userVersion == schema.LatestVersion() {
+		return nil
+	}
+
+	if options.BackupDir != "" {
+		os.MkdirAll(options.BackupDir, 0755)
+		backupFile := filepath.Join(options.BackupDir, fmt.Sprintf("before_v%d_upgrade.%s", schema.LatestVersion(), filepath.Base(options.File)))
+		if _, err = db.Handle().Exec(`VACUUM INTO ?`, backupFile); err != nil {
+			return fmt.Errorf("unable to create backup %s: %w", backupFile, err)
+		}
+	}
+
 	return db.WrapTx(func(tx sqlx.Ext) error {
-		applicationId, err := vs.GetApplicationId(tx)
-		if err != nil {
-			return err
-		}
-
-		if applicationId != 0 && applicationId != schema.ApplicationID() {
-			return fmt.Errorf("application_id (%d) does not match schema ID (%d)", applicationId, schema.ApplicationID())
-		}
-
 		if err = vs.SetApplicationId(tx, schema.ApplicationID()); err != nil {
 			return err
-		}
-
-		userVersion, err := vs.GetUserVersion(tx)
-		if err != nil {
-			return err
-		}
-
-		if userVersion > schema.LatestVersion() {
-			return fmt.Errorf("user_version (%d) is higher than the schema version (%d)", userVersion, schema.LatestVersion())
 		}
 
 		newVersion, err := schema.Upgrade(tx, userVersion)

@@ -30,6 +30,14 @@ type OpenOptions struct {
 	// Optional, defaults to SqliteVersion.
 	VersionStorer VersionStorer
 
+	// If BackupDir is non-empty, a backup database
+	// will be created in the specified directory prior
+	// to attempting a schema upgrade. Backup files take
+	// the form of "before_v%d_upgrade.%s", where %d is
+	// Schema.LatestVersion(), and %s is the result of
+	// calling filepath.Base on File.
+	BackupDir string
+
 	// Connection options, see https://github.com/mattn/go-sqlite3
 	// These are added to any baked-in options in File.
 	DSNOptions map[string]string
@@ -107,7 +115,7 @@ func Open(options OpenOptions) (*DB, error) {
 		vs = &SqliteVersion{}
 	}
 
-	if err = initDB(db, options.Schema, vs); err != nil {
+	if err = initDB(db, options, vs); err != nil {
 		return nil, err
 	}
 

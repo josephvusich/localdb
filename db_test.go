@@ -82,6 +82,41 @@ ALTER TABLE p ADD COLUMN extra TEXT;
 	suite.Require().Equal(int32(2), userVersion)
 
 	suite.Require().NoError(db.Close())
+
+	suite.Require().NoFileExists(filepath.Join(filepath.Dir(suite.DBFile), "before_v2_upgrade.test.db"))
+}
+
+func (suite *DBTestSuite) TestUpgradeWithBackup() {
+	schema := NewSqlSchema(`CREATE TABLE t ( foo TEXT, bar NUMERIC )`)
+	schema.DefineUpgrade(2, `
+ALTER TABLE t RENAME TO p;
+ALTER TABLE p ADD COLUMN extra TEXT;
+`)
+
+	vs := &SqliteVersion{}
+	backupDir := filepath.Dir(suite.DBFile)
+	db, err := Open(OpenOptions{
+		File:          suite.DBFile,
+		BackupDir:     backupDir,
+		Schema:        schema,
+		VersionStorer: vs,
+	})
+	suite.Require().NoError(err)
+
+	_, err = db.Handle().Exec(`INSERT INTO p (foo, bar, extra) VALUES (?, ?, ?)`, "f", 2, "foobar")
+	suite.Require().NoError(err)
+
+	appId, err := vs.GetApplicationId(db.Handle())
+	suite.Require().NoError(err)
+	suite.Require().Equal(schema.ID, appId)
+	userVersion, err := vs.GetUserVersion(db.Handle())
+	suite.Require().NoError(err)
+	suite.Require().Equal(schema.ID, appId)
+	suite.Require().Equal(int32(2), userVersion)
+
+	suite.Require().NoError(db.Close())
+
+	suite.Require().FileExists(filepath.Join(backupDir, "before_v2_upgrade.test.db"))
 }
 
 func (suite *DBTestSuite) TestLegacyUpgrade() {
