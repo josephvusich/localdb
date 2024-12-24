@@ -1,6 +1,7 @@
 package localdb
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"net/url"
@@ -18,6 +19,13 @@ type DB struct {
 	opened time.Time
 	root   *sqlx.DB
 	schema Schema
+}
+
+type Handle interface {
+	sqlx.Ext
+
+	Prepare(string) (*sql.Stmt, error)
+	Preparex(string) (*sqlx.Stmt, error)
 }
 
 type OpenOptions struct {
@@ -135,16 +143,39 @@ func Open(options OpenOptions) (*DB, error) {
 	return db, nil
 }
 
-// WrapTx begins a new transaction and invokes f.
-// If f() panics or returns an error, the transaction is
+// WrapTx begins a new transaction and invokes fn().
+// If fn() panics or returns an error, the transaction is
 // discarded and the error is returned.
 // Any error while discarding the transaction will trigger
 // a panic.
-// f() should not attempt to discard or commit the underlying
+// fn() should not attempt to discard or commit the underlying
 // transaction.
-// If f() returns nil, WrapTx returns any error encountered
+// If fn() returns nil, WrapTx returns any error encountered
 // while committing the transaction, or nil on success.
-func (d *DB) WrapTx(f func(tx sqlx.Ext) error) error {
+//
+// fn must have one of the following signatures:
+//
+//	func(sqlx.Ext) error
+//	func(Handle) error
+//
+// If fn does not have one of the above signatures, WrapTx
+// will panic without attempting to begin a transaction.
+func (d *DB) WrapTx(fn any) error {
+	var f func(Handle) error
+
+	switch fn := fn.(type) {
+	case func(Handle) error:
+		f = fn
+		break
+	case func(sqlx.Ext) error:
+		f = func(h Handle) error {
+			return fn(h)
+		}
+		break
+	default:
+		panic("invalid function signature passed to WrapTx")
+	}
+
 	tx, err := d.root.Beginx()
 	if err != nil {
 		return err
@@ -171,7 +202,7 @@ func (d *DB) WrapTx(f func(tx sqlx.Ext) error) error {
 	return err
 }
 
-func (d *DB) Handle() sqlx.Ext {
+func (d *DB) Handle() Handle {
 	return d.root
 }
 
