@@ -41,6 +41,11 @@ type OpenOptions struct {
 	// Connection options, see https://github.com/mattn/go-sqlite3
 	// These are added to any baked-in options in File.
 	DSNOptions map[string]string
+
+	// MaxOpenConns sets the maximum number of open connections to the database.
+	// If MaxOpenConns <= -1, there is no limit. If MaxOpenConns == 0, the limit will be
+	// set to 1 (the default.)
+	MaxOpenConns int
 }
 
 func assembleDSN(inputDSN string, dsnOpts map[string]string) (dsn string, err error) {
@@ -102,7 +107,12 @@ func Open(options OpenOptions) (*DB, error) {
 			panic(err)
 		}
 	})
-	sq.SetMaxOpenConns(1)
+
+	if options.MaxOpenConns == 0 {
+		sq.SetMaxOpenConns(1)
+	} else {
+		sq.SetMaxOpenConns(options.MaxOpenConns)
+	}
 
 	db := &DB{
 		opened: now,
