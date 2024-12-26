@@ -5,6 +5,7 @@ import (
 	"hash/crc32"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/jmoiron/sqlx"
 )
@@ -77,6 +78,13 @@ func (s *SqlSchema) DefineUpgrade(newVersion int, newSchema string) {
 	s.versions = append(s.versions, newSchema)
 }
 
+func backupFilename(options OpenOptions, schema Schema) string {
+	base := filepath.Base(options.File)
+	ext := filepath.Ext(base)
+	base = strings.TrimSuffix(base, ext)
+	return filepath.Join(options.BackupDir, fmt.Sprintf("%s.before_v%d_upgrade%s", base, schema.LatestVersion(), ext))
+}
+
 func initDB(db *DB, options OpenOptions, vs VersionStorer) error {
 	schema := options.Schema
 
@@ -104,7 +112,7 @@ func initDB(db *DB, options OpenOptions, vs VersionStorer) error {
 
 	if options.BackupDir != "" {
 		os.MkdirAll(options.BackupDir, 0755)
-		backupFile := filepath.Join(options.BackupDir, fmt.Sprintf("before_v%d_upgrade.%s", schema.LatestVersion(), filepath.Base(options.File)))
+		backupFile := backupFilename(options, schema)
 		if _, err = db.Handle().Exec(`VACUUM INTO ?`, backupFile); err != nil {
 			return fmt.Errorf("unable to create backup %s: %w", backupFile, err)
 		}

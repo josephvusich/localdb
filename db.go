@@ -41,9 +41,19 @@ type OpenOptions struct {
 	// If BackupDir is non-empty, a backup database
 	// will be created in the specified directory prior
 	// to attempting a schema upgrade. Backup files take
-	// the form of "before_v%d_upgrade.%s", where %d is
-	// Schema.LatestVersion(), and %s is the result of
-	// calling filepath.Base on File.
+	// the form of "${BASENAME}.before_v%d_upgrade.${EXT}",
+	// where %d is, and ${BASENAME} and ${EXT} are derived
+	// from File. If File is "test.db", the resulting backup
+	// name for v1 => v2 would be "test.before_v2_upgrade.db".
+	// If File has no extension, the backup file will also be
+	// extensionless.
+	//
+	// Note that in versions prior to 1.4.0, the format for
+	// backup filenames was different, and the example above
+	// would have resulted in "before_v2_upgrade.test.db".
+	// The behavior was changed to enable backups to lexically
+	// sort alongside the main database file, and to retain a
+	// dot-prefix if the main database file was also dot-prefixed.
 	BackupDir string
 
 	// Connection options, see https://github.com/mattn/go-sqlite3

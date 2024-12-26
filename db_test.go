@@ -23,6 +23,23 @@ func (suite *DBTestSuite) SetupTest() {
 	suite.DBFile = filepath.Join(suite.T().TempDir(), "test.db")
 }
 
+func (suite *DBTestSuite) TestBackupFilename() {
+	cases := map[string]string{
+		"foo/test.db":     "bar/test.before_v1_upgrade.db",
+		"foo/test.foo.db": "bar/test.foo.before_v1_upgrade.db",
+		"foo/test":        "bar/test.before_v1_upgrade",
+	}
+
+	schema := NewSqlSchema("")
+
+	for in, out := range cases {
+		suite.Require().Equal(out, backupFilename(OpenOptions{
+			BackupDir: "bar",
+			File:      in,
+		}, schema))
+	}
+}
+
 func (suite *DBTestSuite) TestAssembleDSN() {
 	result, err := assembleDSN(suite.DBFile, nil)
 	suite.Require().NoError(err)
@@ -83,7 +100,7 @@ ALTER TABLE p ADD COLUMN extra TEXT;
 
 	suite.Require().NoError(db.Close())
 
-	suite.Require().NoFileExists(filepath.Join(filepath.Dir(suite.DBFile), "before_v2_upgrade.test.db"))
+	suite.Require().NoFileExists(filepath.Join(filepath.Dir(suite.DBFile), "test.before_v2_upgrade.db"))
 }
 
 func (suite *DBTestSuite) TestUpgradeWithBackup() {
@@ -116,7 +133,7 @@ ALTER TABLE p ADD COLUMN extra TEXT;
 
 	suite.Require().NoError(db.Close())
 
-	suite.Require().FileExists(filepath.Join(backupDir, "before_v2_upgrade.test.db"))
+	suite.Require().FileExists(filepath.Join(backupDir, "test.before_v2_upgrade.db"))
 }
 
 func (suite *DBTestSuite) TestLegacyUpgrade() {
