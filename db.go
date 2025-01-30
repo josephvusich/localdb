@@ -150,9 +150,10 @@ type OpenOptions struct {
 	// will be created in the specified directory prior
 	// to attempting a schema upgrade. Backup files take
 	// the form of "${BASENAME}.before_v%d_upgrade.${EXT}",
-	// where %d is, and ${BASENAME} and ${EXT} are derived
-	// from File. If File is "test.db", the resulting backup
-	// name for v1 => v2 would be "test.before_v2_upgrade.db".
+	// where %d is the new version, and ${BASENAME} and
+	// ${EXT} are derived from File.
+	// If File is "test.db", the resulting backup name
+	// for v1 => v2 would be "test.before_v2_upgrade.db".
 	// If File has no extension, the backup file will also be
 	// extensionless.
 	//
