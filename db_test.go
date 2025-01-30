@@ -58,6 +58,59 @@ func (suite *DBTestSuite) TestAssembleDSN() {
 	suite.Require().Equal("test.db?fizz=buzz&foo=bar", result)
 }
 
+func (suite *DBTestSuite) TestStmtCache() {
+	schema := NewSqlSchema(`CREATE TABLE t ( foo TEXT UNIQUE, bar NUMERIC )`)
+	insert := `INSERT INTO t (foo, bar) VALUES (?, ?) ON CONFLICT (foo) DO UPDATE SET bar = excluded.bar`
+
+	db, err := Open(OpenOptions{File: suite.DBFile, Schema: schema})
+	suite.Require().NoError(err)
+
+	cache := NewStmtCache(db.Handle().Preparex)
+	a, err := cache.Prepare(insert)
+	suite.Require().NoError(err)
+
+	b, err := cache.Prepare(insert)
+	suite.Require().NoError(err)
+
+	suite.Require().Equal(a, b, "repeated calls to Prepare should return the same statement")
+
+	_, err = a.Exec("a", 1)
+	suite.Require().NoError(err)
+	row := db.Handle().QueryRowx(`SELECT bar FROM t WHERE foo=?`, "a")
+	var bar int
+	suite.Require().NoError(row.Scan(&bar))
+	suite.Require().Equal(1, bar)
+
+	suite.Require().NoError(b.Close())
+	b, err = cache.Prepare(insert)
+	suite.Require().NoError(err)
+	suite.Require().NotEqual(a, b, "Prepare should return a new statement after closing the previous statement")
+
+	a, err = cache.Prepare(insert)
+	suite.Require().NoError(err)
+	suite.Require().Equal(b, a, "repeated calls to Prepare should return the same statement")
+
+	suite.Require().NoError(cache.Close())
+
+	b, err = cache.Prepare(insert)
+	suite.Require().NoError(err)
+	suite.Require().NotEqual(a, b, "Prepare should return a new statement after calling Close on the StmtCache")
+
+	_, err = b.Exec("a", 2)
+	suite.Require().NoError(err)
+	query, err := cache.Prepare(`SELECT bar FROM t WHERE foo=?`)
+	suite.Require().NoError(err)
+	row = query.QueryRowx("a")
+	suite.Require().NoError(row.Scan(&bar))
+	suite.Require().Equal(2, bar)
+
+	a, err = cache.Prepare(insert)
+	suite.Require().NoError(err)
+	suite.Require().Equal(a, b, "repeated calls to Prepare should return the same statement")
+
+	suite.Require().NoError(cache.Close())
+}
+
 func (suite *DBTestSuite) TestOpen() {
 	schema := NewSqlSchema(`CREATE TABLE t ( foo TEXT, bar NUMERIC )`)
 

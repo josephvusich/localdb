@@ -21,11 +21,119 @@ type DB struct {
 	schema Schema
 }
 
+// Handle represents a database handle, which may or may not
+// include a transaction context.
+//
+// It is undefined behavior to call any method on a Handle after
+// it has been closed (such as after leaving the corresponding
+// transaction or closing the database.
+//
+// Note that both *sqlx.DB and *sqlx.Tx are valid implementations
+// of Handle.
 type Handle interface {
 	sqlx.Ext
+	Preparer
+}
 
+type Preparer interface {
 	Prepare(string) (*sql.Stmt, error)
 	Preparex(string) (*sqlx.Stmt, error)
+}
+
+// StmtCache provides a caching layer for prepared statements.
+//
+// All prepared statements are cached until either their individual
+// Close method is called, or [StmtCache.Close] is called.
+type StmtCache struct {
+	preparer func(string) (*sqlx.Stmt, error)
+	cache    sync.Map
+}
+
+func NewStmtCache(preparer func(string) (*sqlx.Stmt, error)) *StmtCache {
+	return &StmtCache{
+		preparer: preparer,
+	}
+}
+
+// Stmt represents a cached sqlx.Stmt, with a modified Close function
+// that removes it from the associated StmtCache when discarded.
+type Stmt struct {
+	*sqlx.Stmt
+
+	closer func() error
+}
+
+// Close discards the prepared statement and removes it from the
+// associated StmtCache.
+func (s *Stmt) Close() error {
+	return s.closer()
+}
+
+// Prepare will return the same Stmt when called repeatedly with
+// an identical query string, as long as the statement itself was
+// not closed directly.
+func (h *StmtCache) Prepare(query string) (*Stmt, error) {
+	return loadOrCalculate(query, &h.cache, func(query string) (*Stmt, error) {
+		stmt, err := h.preparer(query)
+		if err != nil {
+			return nil, err
+		}
+
+		result := &Stmt{
+			Stmt: stmt,
+		}
+
+		var once sync.Once
+		result.closer = func() (err error) {
+			once.Do(func() {
+				h.cache.CompareAndDelete(query, result)
+				err = stmt.Close()
+			})
+			return err
+		}
+
+		return result, nil
+	})
+}
+
+// Close calls [Stmt.Close] on all cached statements and discards
+// them from the cache. Attempting to call [StmtCache.Prepare]
+// while Close is running is undefined behavior. Once the Close
+// call completes, it is possible to reuse the StmtCache.
+func (h *StmtCache) Close() (allErrs error) {
+	h.cache.Range(func(key, value any) bool {
+		h.cache.Delete(key)
+		if err := value.(*Stmt).Close(); err != nil {
+			allErrs = errors.Join(fmt.Errorf("error closing `%s': %w", key.(string), err))
+		}
+		return true
+	})
+
+	return
+}
+
+type closer interface {
+	Close() error
+}
+
+func loadOrCalculate[T closer, U comparable](input U, cache *sync.Map, calculator func(U) (T, error)) (value T, err error) {
+	if stmt, ok := cache.Load(input); ok {
+		return stmt.(T), nil
+	}
+
+	fresh, err := calculator(input)
+	if err != nil {
+		return value, err
+	}
+
+	// Handle create race condition
+	cached, loaded := cache.LoadOrStore(input, fresh)
+	if loaded {
+		if err = fresh.Close(); err != nil {
+			return value, err
+		}
+	}
+	return cached.(T), nil
 }
 
 type OpenOptions struct {
@@ -193,6 +301,9 @@ func (d *DB) WrapTx(fn any) error {
 
 	var once sync.Once
 	defer once.Do(func() {
+		// This will only be triggered if we returned prior
+		// to committing the transaction, in which case the
+		// wrapped fn returned an error or panicked.
 		if err := tx.Rollback(); err != nil {
 			panic(err)
 		}
