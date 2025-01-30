@@ -3,9 +3,9 @@ module github.com/josephvusich/localdb
 go 1.20
 
 require (
-	github.com/jmoiron/sqlx v1.3.5
-	github.com/mattn/go-sqlite3 v1.14.6
-	github.com/stretchr/testify v1.8.4
+	github.com/jmoiron/sqlx v1.4.0
+	github.com/mattn/go-sqlite3 v1.14.24
+	github.com/stretchr/testify v1.10.0
 )
 
 require (
