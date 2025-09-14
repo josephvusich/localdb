@@ -173,6 +173,9 @@ type OpenOptions struct {
 	// If MaxOpenConns <= -1, there is no limit. If MaxOpenConns == 0, the limit will be
 	// set to 1 (the default.)
 	MaxOpenConns int
+
+	// Overrides the default driver of "sqlite3", if set.
+	DriverName string
 }
 
 func assembleDSN(inputDSN string, dsnOpts map[string]string) (dsn string, err error) {
@@ -224,7 +227,12 @@ func Open(options OpenOptions) (*DB, error) {
 		return nil, fmt.Errorf("error assembling DSN: %w", err)
 	}
 
-	sq, err := sqlx.Open("sqlite3", fmt.Sprintf("file:%s", dsn))
+	driver := options.DriverName
+	if driver == "" {
+		driver = "sqlite3"
+	}
+
+	sq, err := sqlx.Open(driver, fmt.Sprintf("file:%s", dsn))
 	if err != nil {
 		return nil, err
 	}

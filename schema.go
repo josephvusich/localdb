@@ -1,8 +1,10 @@
 package localdb
 
 import (
+	"errors"
 	"fmt"
 	"hash/crc32"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,6 +15,11 @@ import (
 var crc32cTable = crc32.MakeTable(crc32.Castagnoli)
 
 type SchemaLegacyHelper func(q sqlx.Queryer) (applicationId int32, userVersion int32, err error)
+
+var (
+	NoErrContinueUpgrade     = errors.New("incremental upgrade completed, more versions remaining")
+	NoErrContinueUpgradeNoTx = fmt.Errorf("%w, next version must not have a transaction", NoErrContinueUpgrade)
+)
 
 type Schema interface {
 	// ApplicationID should be unique to
@@ -34,7 +41,25 @@ type Schema interface {
 	// Upgrade the database, if necessary.
 	// Returns the new version, which may
 	// be the same as the current version.
+	// If either of NoErrContinueUpgrade or
+	// NoErrContinueUpgradeNoTx is returned,
+	// Upgrade will be called again, with or
+	// without a transaction, respectively.
+	// Upgrade must always behave atomically,
+	// and never leave the database in a non-
+	// -upgradable state.
+	// The tx parameter is always of underlying
+	// type *UpgradeTx.
 	Upgrade(tx sqlx.Ext, currentVersion int32) (updatedVersion int32, err error)
+}
+
+// UpgradeTx is the underlying implementation for Upgrade's tx parameter.
+type UpgradeTx struct {
+	sqlx.Ext
+
+	// Tx returns true, unless the previous call to upgrade returned
+	// NoErrContinueUpgradeNoTx.
+	Tx bool
 }
 
 type SqlSchema struct {
@@ -49,6 +74,7 @@ type SqlSchema struct {
 	VersionStorer VersionStorer
 
 	versions []string
+	noTx     map[int]bool
 	legacy   SchemaLegacyHelper
 }
 
@@ -62,7 +88,23 @@ func NewSqlSchema(rootSchema string) *SqlSchema {
 		ID:            int32(crc32.Checksum([]byte(rootSchema), crc32cTable)),
 		VersionStorer: &SqliteVersion{},
 		versions:      []string{rootSchema},
+		noTx:          make(map[int]bool),
 	}
+}
+
+type SqlSchemaUpgrade struct {
+	Version int
+	Schema  string
+
+	// If NoTx is true, this particular upgrade will be executed without a transaction.
+	NoTx bool
+}
+
+// DefineUpgradeEx is an extended form of DefineUpgrade, with additional options.
+// See SqlSchemaUpgrade and DefineUpgrade for details.
+func (s *SqlSchema) DefineUpgradeEx(upgrade SqlSchemaUpgrade) {
+	s.DefineUpgrade(upgrade.Version, upgrade.Schema)
+	s.noTx[upgrade.Version] = upgrade.NoTx
 }
 
 // DefineUpgrade registers a new version of the schema. DefineUpgrade only
@@ -118,18 +160,45 @@ func initDB(db *DB, options OpenOptions, vs VersionStorer) error {
 		}
 	}
 
-	return db.WrapTx(func(tx sqlx.Ext) error {
-		if err = vs.SetApplicationId(tx, schema.ApplicationID()); err != nil {
-			return err
+	// Always start under transaction unless Upgrade returns NoErrContinueUpgradeNoTx.
+	withTx := true
+	for continueUpgrade := true; continueUpgrade; {
+		if !withTx {
+			userVersion, continueUpgrade, withTx, err = upgradeStep(&UpgradeTx{db.Handle(), false}, schema, vs, userVersion)
+		} else {
+			err = db.WrapTx(func(tx sqlx.Ext) error {
+				if err := vs.SetApplicationId(tx, schema.ApplicationID()); err != nil {
+					return err
+				}
+
+				userVersion, continueUpgrade, withTx, err = upgradeStep(&UpgradeTx{tx, true}, schema, vs, userVersion)
+				return err
+			})
 		}
 
-		newVersion, err := schema.Upgrade(tx, userVersion)
 		if err != nil {
 			return err
 		}
+	}
+	return nil
+}
 
-		return vs.SetUserVersion(tx, newVersion)
-	})
+func upgradeStep(handle sqlx.Ext, schema Schema, vs VersionStorer, userVersion int32) (newVersion int32, continueUpgrade, withTx bool, err error) {
+	newVersion, err = schema.Upgrade(handle, userVersion)
+	if err != nil {
+		if !errors.Is(err, NoErrContinueUpgrade) {
+			return -1, false, false, err
+		}
+		continueUpgrade = true
+		withTx = !errors.Is(err, NoErrContinueUpgradeNoTx)
+		log.Println("Updated withTx:", withTx)
+	}
+
+	if err := vs.SetUserVersion(handle, newVersion); err != nil {
+		panic(err)
+	}
+
+	return newVersion, continueUpgrade, withTx, nil
 }
 
 func (s *SqlSchema) LatestVersion() int32 {
@@ -139,9 +208,28 @@ func (s *SqlSchema) LatestVersion() int32 {
 func (s *SqlSchema) Upgrade(tx sqlx.Ext, currentVersion int32) (newVersion int32, err error) {
 	newVersion = s.LatestVersion()
 
+	log.Println("Upgrading from", currentVersion, "to", newVersion)
 	for i := currentVersion; i < newVersion; i++ {
+		skipTx := s.noTx[int(i)+1]
+		if skipTx == tx.(*UpgradeTx).Tx {
+			if skipTx {
+				log.Println("skipTx=true, bailing because we have a tx")
+				return i, NoErrContinueUpgradeNoTx
+			}
+			log.Println("skipTx=false, bailing because we do not have a tx")
+			return i, NoErrContinueUpgrade
+		}
+
 		if _, err := tx.Exec(s.versions[i]); err != nil {
-			return -1, err
+			return -1, fmt.Errorf("error applying schema version %d: %w", i+1, err)
+		}
+
+		if skipTx {
+			// Never run more than one step when operating without a transaction
+			if s.noTx[int(i)+2] {
+				return i + 1, NoErrContinueUpgradeNoTx
+			}
+			return i + 1, NoErrContinueUpgrade
 		}
 	}
 
