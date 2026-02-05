@@ -156,7 +156,7 @@ ALTER TABLE p ADD COLUMN extra TEXT;
 	suite.Require().NoFileExists(filepath.Join(filepath.Dir(suite.DBFile), "test.before_v2_upgrade.db"))
 }
 
-func (suite *DBTestSuite) TestUpgradeWithBackup() {
+func (suite *DBTestSuite) TestBackupBehavior() {
 	schema := NewSqlSchema(`CREATE TABLE t ( foo TEXT, bar NUMERIC )`)
 	schema.DefineUpgrade(2, `
 ALTER TABLE t RENAME TO p;
@@ -186,7 +186,33 @@ ALTER TABLE p ADD COLUMN extra TEXT;
 
 	suite.Require().NoError(db.Close())
 
-	suite.Require().FileExists(filepath.Join(backupDir, "test.before_v2_upgrade.db"))
+	suite.Require().NoFileExists(filepath.Join(backupDir, "test.before_v2_upgrade.db"), "upgrading newly created DB should not create a backup")
+
+	schema.DefineUpgrade(3, `ALTER TABLE p ADD COLUMN extra2 TEXT;`)
+	db, err = Open(OpenOptions{
+		File:          suite.DBFile,
+		BackupDir:     "",
+		Schema:        schema,
+		VersionStorer: vs,
+	})
+	suite.Require().NoError(err)
+	_, err = db.Handle().Exec(`INSERT INTO p (foo, bar, extra, extra2) VALUES (?, ?, ?, ?)`, "f", 2, "foobar", "more")
+	suite.Require().NoError(err)
+	suite.Require().NoError(db.Close())
+	suite.Require().NoFileExists(filepath.Join(backupDir, "test.before_v3_upgrade.db"), "upgrading without BackupDir should not create a backup")
+
+	schema.DefineUpgrade(4, `ALTER TABLE p ADD COLUMN extra3 TEXT;`)
+	db, err = Open(OpenOptions{
+		File:          suite.DBFile,
+		BackupDir:     backupDir,
+		Schema:        schema,
+		VersionStorer: vs,
+	})
+	suite.Require().NoError(err)
+	_, err = db.Handle().Exec(`INSERT INTO p (foo, bar, extra, extra2, extra3) VALUES (?, ?, ?, ?, ?)`, "f", 2, "foobar", "more", "even_more")
+	suite.Require().NoError(err)
+	suite.Require().NoError(db.Close())
+	suite.Require().FileExists(filepath.Join(backupDir, "test.before_v4_upgrade.db"), "upgrading existing DB with a valid BackupDir should create backup")
 }
 
 func (suite *DBTestSuite) TestLegacyUpgrade() {

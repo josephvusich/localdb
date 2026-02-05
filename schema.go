@@ -110,7 +110,7 @@ func initDB(db *DB, options OpenOptions, vs VersionStorer) error {
 		return nil
 	}
 
-	if options.BackupDir != "" {
+	if options.BackupDir != "" && applicationId != 0 && userVersion != 0 {
 		os.MkdirAll(options.BackupDir, 0755)
 		backupFile := backupFilename(options, schema)
 		if _, err = db.Handle().Exec(`VACUUM INTO ?`, backupFile); err != nil {
