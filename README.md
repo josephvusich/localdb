@@ -1,5 +1,7 @@
 # localdb
 
+[![Test](https://github.com/josephvusich/localdb/actions/workflows/test.yml/badge.svg)](https://github.com/josephvusich/localdb/actions/workflows/test.yml)
+
 A simple SQLite3 wrapper for Go with built-in schema versioning.
 
 ## Install
