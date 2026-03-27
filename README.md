@@ -49,6 +49,21 @@ schema.DefineUpgrade(3, `ALTER TABLE users ADD COLUMN active INTEGER DEFAULT 1;`
 
 Upgrades run in a transaction when the database is opened. If any upgrade step fails, the transaction is rolled back.
 
+### Upgrade hooks
+
+Use `DefinePreUpgrade` and `DefinePostUpgrade` to run Go code before or after a version's SQL, within the same transaction. This is useful for tasks like backfilling new columns:
+
+```go
+schema.DefineUpgrade(2, `ALTER TABLE users ADD COLUMN email TEXT;`)
+
+schema.DefinePostUpgrade(2, func(tx sqlx.Ext) error {
+    _, err := tx.Exec(`UPDATE users SET email = name || '@example.com'`)
+    return err
+})
+```
+
+If a hook returns an error, the entire upgrade transaction is rolled back.
+
 ### Backup before upgrade
 
 To back up the database before running schema upgrades, set `BackupDir`.

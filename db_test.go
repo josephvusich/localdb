@@ -156,6 +156,49 @@ ALTER TABLE p ADD COLUMN extra TEXT;
 	suite.Require().NoFileExists(filepath.Join(filepath.Dir(suite.DBFile), "test.before_v2_upgrade.db"))
 }
 
+func (suite *DBTestSuite) TestUpgradeHooks() {
+	schema := NewSqlSchema(`CREATE TABLE t ( foo TEXT, bar NUMERIC )`)
+	schema.DefineUpgrade(2, `ALTER TABLE t ADD COLUMN extra TEXT;`)
+
+	var order []string
+	schema.DefinePreUpgrade(2, func(tx sqlx.Ext) error {
+		order = append(order, "pre")
+		// Insert a row before the ALTER adds the extra column
+		_, err := tx.Exec(`INSERT INTO t (foo, bar) VALUES (?, ?)`, "pre", 1)
+		return err
+	})
+	schema.DefinePostUpgrade(2, func(tx sqlx.Ext) error {
+		order = append(order, "post")
+		// Backfill the new column for existing rows
+		_, err := tx.Exec(`UPDATE t SET extra = 'backfilled' WHERE foo = ?`, "pre")
+		return err
+	})
+
+	db, err := Open(OpenOptions{File: suite.DBFile, Schema: schema})
+	suite.Require().NoError(err)
+
+	suite.Require().Equal([]string{"pre", "post"}, order)
+
+	row := db.Handle().QueryRowx(`SELECT extra FROM t WHERE foo = ?`, "pre")
+	var extra string
+	suite.Require().NoError(row.Scan(&extra))
+	suite.Require().Equal("backfilled", extra)
+
+	suite.Require().NoError(db.Close())
+}
+
+func (suite *DBTestSuite) TestUpgradeHookFailure() {
+	schema := NewSqlSchema(`CREATE TABLE t ( foo TEXT )`)
+	schema.DefineUpgrade(2, `ALTER TABLE t ADD COLUMN bar TEXT;`)
+	schema.DefinePostUpgrade(2, func(tx sqlx.Ext) error {
+		return fmt.Errorf("hook failed")
+	})
+
+	_, err := Open(OpenOptions{File: suite.DBFile, Schema: schema})
+	suite.Require().Error(err)
+	suite.Require().EqualError(err, "error during v2 post-upgrade hook: hook failed")
+}
+
 func (suite *DBTestSuite) TestBackupBehavior() {
 	schema := NewSqlSchema(`CREATE TABLE t ( foo TEXT, bar NUMERIC )`)
 	schema.DefineUpgrade(2, `
