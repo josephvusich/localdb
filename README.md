@@ -35,7 +35,7 @@ On first open, the root schema is executed automatically. On subsequent opens, t
 
 ### Schema upgrades
 
-Register incremental upgrades starting from version 2:
+Register incremental upgrades starting from version 2. Version 0 is the default on an uninitialized database (the state before the root schema is applied), and version 1 is the root schema passed to `NewSqlSchema`, so the first upgrade is version 2:
 
 ```go
 schema := localdb.NewSqlSchema(`CREATE TABLE users (
