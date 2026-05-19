@@ -17,7 +17,7 @@ As of v2, the module path is `github.com/josephvusich/localdb/v2`. The library n
 ## Dependencies
 
 - `github.com/jmoiron/sqlx` — extended SQL library (sqlx.DB, sqlx.Tx, sqlx.Stmt)
-- `github.com/mattn/go-sqlite3` — test-only driver (registered in `driver_test.go`). The library itself does not import any SQLite driver.
+- `modernc.org/sqlite` — test-only driver (registered in `driver_test.go`). Pure-Go so the test suite runs without CGo. The library itself does not import any SQLite driver.
 - `github.com/stretchr/testify` — test assertions and suite runner
 
 ## Architecture
