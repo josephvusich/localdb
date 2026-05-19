@@ -2,19 +2,38 @@
 
 [![Test](https://github.com/josephvusich/localdb/actions/workflows/test.yml/badge.svg)](https://github.com/josephvusich/localdb/actions/workflows/test.yml)
 
-A simple SQLite3 wrapper for Go with built-in schema versioning.
+A simple SQLite wrapper for Go with built-in schema versioning.
 
 ## Install
 
 ```
-go get github.com/josephvusich/localdb
+go get github.com/josephvusich/localdb/v2
 ```
+
+## SQLite driver
+
+As of v2, localdb no longer imports a SQLite driver itself. Callers must blank-import a driver that registers itself with `database/sql`:
+
+```go
+import _ "github.com/mattn/go-sqlite3" // cgo-based, registered as "sqlite3"
+// or
+import _ "modernc.org/sqlite"          // pure Go, registered as "sqlite"
+```
+
+Then pass the registered driver name via `OpenOptions.DriverName`. If `DriverName` is empty, `"sqlite3"` is used.
 
 ## Usage
 
 ### Define a schema and open a database
 
 ```go
+import (
+    "log"
+
+    "github.com/josephvusich/localdb/v2"
+    _ "github.com/mattn/go-sqlite3"
+)
+
 schema := localdb.NewSqlSchema(`CREATE TABLE users (
     id INTEGER PRIMARY KEY,
     name TEXT NOT NULL,
@@ -101,3 +120,30 @@ err := db.WrapTx(func(tx sqlx.Ext) error {
     return err
 })
 ```
+
+## Upgrading from v1
+
+v2 is a breaking release that removes the bundled `github.com/mattn/go-sqlite3` import. To upgrade:
+
+1. Change the import path from `github.com/josephvusich/localdb` to `github.com/josephvusich/localdb/v2`.
+2. Add a blank import of your chosen SQLite driver to your `main` package (or any package that runs at startup):
+
+   ```go
+   import _ "github.com/mattn/go-sqlite3"
+   ```
+
+   Without this, `Open` will fail at runtime with `sql: unknown driver "sqlite3" (forgotten import?)`.
+
+3. If you want a different driver, register it under your chosen name and pass it via `OpenOptions.DriverName`. For example, to use `modernc.org/sqlite` (pure Go, no cgo):
+
+   ```go
+   import _ "modernc.org/sqlite"
+
+   db, err := localdb.Open(localdb.OpenOptions{
+       File:       "app.db",
+       Schema:     schema,
+       DriverName: "sqlite", // modernc.org/sqlite registers itself as "sqlite"
+   })
+   ```
+
+   Note that DSN option syntax differs between drivers (e.g. mattn accepts `_busy_timeout=250`, modernc uses `_pragma=busy_timeout(250)`).

@@ -10,8 +10,12 @@ import (
 	"time"
 
 	"github.com/jmoiron/sqlx"
-	_ "github.com/mattn/go-sqlite3"
 )
+
+// DefaultDriverName is used when OpenOptions.DriverName is empty.
+// Callers must blank-import a driver registered under this name
+// (e.g. _ "github.com/mattn/go-sqlite3") or override via DriverName.
+const DefaultDriverName = "sqlite3"
 
 var errDetectPanic = errors.New("this should never happen")
 
@@ -165,14 +169,23 @@ type OpenOptions struct {
 	// dot-prefix if the main database file was also dot-prefixed.
 	BackupDir string
 
-	// Connection options, see https://github.com/mattn/go-sqlite3
-	// These are added to any baked-in options in File.
+	// Connection options. Format is driver-specific; refer to your
+	// SQLite driver's documentation (e.g. github.com/mattn/go-sqlite3
+	// or modernc.org/sqlite). These are added to any baked-in options
+	// in File.
 	DSNOptions map[string]string
 
 	// MaxOpenConns sets the maximum number of open connections to the database.
 	// If MaxOpenConns <= -1, there is no limit. If MaxOpenConns == 0, the limit will be
 	// set to 1 (the default.)
 	MaxOpenConns int
+
+	// DriverName selects which database/sql driver to open the
+	// database with. The driver must be registered (typically via a
+	// blank import in the caller's main package, e.g.
+	// _ "github.com/mattn/go-sqlite3" or _ "modernc.org/sqlite").
+	// If empty, DefaultDriverName ("sqlite3") is used.
+	DriverName string
 }
 
 func assembleDSN(inputDSN string, dsnOpts map[string]string) (dsn string, err error) {
@@ -224,7 +237,12 @@ func Open(options OpenOptions) (*DB, error) {
 		return nil, fmt.Errorf("error assembling DSN: %w", err)
 	}
 
-	sq, err := sqlx.Open("sqlite3", fmt.Sprintf("file:%s", dsn))
+	driverName := options.DriverName
+	if driverName == "" {
+		driverName = DefaultDriverName
+	}
+
+	sq, err := sqlx.Open(driverName, fmt.Sprintf("file:%s", dsn))
 	if err != nil {
 		return nil, err
 	}

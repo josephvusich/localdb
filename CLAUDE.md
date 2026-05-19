@@ -4,7 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-localdb is a Go library providing a lightweight SQLite3 wrapper with built-in schema versioning. It is a single-package library (`package localdb`) with no sub-packages.
+localdb is a Go library providing a lightweight SQLite wrapper with built-in schema versioning. It is a single-package library (`package localdb`) with no sub-packages.
+
+As of v2, the module path is `github.com/josephvusich/localdb/v2`. The library no longer bundles a SQLite driver — callers blank-import their own (`mattn/go-sqlite3`, `modernc.org/sqlite`, etc.) and may override the registered driver name via `OpenOptions.DriverName` (defaults to `"sqlite3"`).
 
 ## Commands
 
@@ -15,7 +17,7 @@ localdb is a Go library providing a lightweight SQLite3 wrapper with built-in sc
 ## Dependencies
 
 - `github.com/jmoiron/sqlx` — extended SQL library (sqlx.DB, sqlx.Tx, sqlx.Stmt)
-- `github.com/mattn/go-sqlite3` — SQLite3 cgo driver
+- `github.com/mattn/go-sqlite3` — test-only driver (registered in `driver_test.go`). The library itself does not import any SQLite driver.
 - `github.com/stretchr/testify` — test assertions and suite runner
 
 ## Architecture
