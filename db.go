@@ -12,11 +12,6 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-// DefaultDriverName is used when OpenOptions.DriverName is empty.
-// Callers must blank-import a driver registered under this name
-// (e.g. _ "github.com/mattn/go-sqlite3") or override via DriverName.
-const DefaultDriverName = "sqlite3"
-
 var errDetectPanic = errors.New("this should never happen")
 
 type DB struct {
@@ -181,10 +176,10 @@ type OpenOptions struct {
 	MaxOpenConns int
 
 	// DriverName selects which database/sql driver to open the
-	// database with. The driver must be registered (typically via a
-	// blank import in the caller's main package, e.g.
-	// _ "github.com/mattn/go-sqlite3" or _ "modernc.org/sqlite").
-	// If empty, DefaultDriverName ("sqlite3") is used.
+	// database with. Required. The driver must be registered under
+	// this name (typically via a blank import in the caller's main
+	// package, e.g. _ "github.com/mattn/go-sqlite3" registers
+	// "sqlite3"; _ "modernc.org/sqlite" registers "sqlite").
 	DriverName string
 }
 
@@ -237,12 +232,11 @@ func Open(options OpenOptions) (*DB, error) {
 		return nil, fmt.Errorf("error assembling DSN: %w", err)
 	}
 
-	driverName := options.DriverName
-	if driverName == "" {
-		driverName = DefaultDriverName
+	if options.DriverName == "" {
+		return nil, errors.New("OpenOptions.DriverName is required")
 	}
 
-	sq, err := sqlx.Open(driverName, fmt.Sprintf("file:%s", dsn))
+	sq, err := sqlx.Open(options.DriverName, fmt.Sprintf("file:%s", dsn))
 	if err != nil {
 		return nil, err
 	}

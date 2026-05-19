@@ -62,7 +62,7 @@ func (suite *DBTestSuite) TestStmtCache() {
 	schema := NewSqlSchema(`CREATE TABLE t ( foo TEXT UNIQUE, bar NUMERIC )`)
 	insert := `INSERT INTO t (foo, bar) VALUES (?, ?) ON CONFLICT (foo) DO UPDATE SET bar = excluded.bar`
 
-	db, err := Open(OpenOptions{File: suite.DBFile, Schema: schema})
+	db, err := Open(OpenOptions{File: suite.DBFile, Schema: schema, DriverName: "sqlite3"})
 	suite.Require().NoError(err)
 
 	cache := NewStmtCache(db.Handle().Preparex)
@@ -114,7 +114,7 @@ func (suite *DBTestSuite) TestStmtCache() {
 func (suite *DBTestSuite) TestOpen() {
 	schema := NewSqlSchema(`CREATE TABLE t ( foo TEXT, bar NUMERIC )`)
 
-	db, err := Open(OpenOptions{File: suite.DBFile, Schema: schema})
+	db, err := Open(OpenOptions{File: suite.DBFile, Schema: schema, DriverName: "sqlite3"})
 	suite.Require().NoError(err)
 
 	vs := &SqliteVersion{}
@@ -137,7 +137,7 @@ ALTER TABLE p ADD COLUMN extra TEXT;
 `)
 
 	vs := &SqliteVersion{}
-	db, err := Open(OpenOptions{File: suite.DBFile, Schema: schema, VersionStorer: vs})
+	db, err := Open(OpenOptions{File: suite.DBFile, Schema: schema, VersionStorer: vs, DriverName: "sqlite3"})
 	suite.Require().NoError(err)
 
 	_, err = db.Handle().Exec(`INSERT INTO p (foo, bar, extra) VALUES (?, ?, ?)`, "f", 2, "foobar")
@@ -174,7 +174,7 @@ func (suite *DBTestSuite) TestUpgradeHooks() {
 		return err
 	})
 
-	db, err := Open(OpenOptions{File: suite.DBFile, Schema: schema})
+	db, err := Open(OpenOptions{File: suite.DBFile, Schema: schema, DriverName: "sqlite3"})
 	suite.Require().NoError(err)
 
 	suite.Require().Equal([]string{"pre", "post"}, order)
@@ -194,7 +194,7 @@ func (suite *DBTestSuite) TestUpgradeHookFailure() {
 		return fmt.Errorf("hook failed")
 	})
 
-	_, err := Open(OpenOptions{File: suite.DBFile, Schema: schema})
+	_, err := Open(OpenOptions{File: suite.DBFile, Schema: schema, DriverName: "sqlite3"})
 	suite.Require().Error(err)
 	suite.Require().EqualError(err, "error during v2 post-upgrade hook: hook failed")
 }
@@ -210,6 +210,7 @@ ALTER TABLE p ADD COLUMN extra TEXT;
 	backupDir := filepath.Dir(suite.DBFile)
 	db, err := Open(OpenOptions{
 		File:          suite.DBFile,
+		DriverName:    "sqlite3",
 		BackupDir:     backupDir,
 		Schema:        schema,
 		VersionStorer: vs,
@@ -234,6 +235,7 @@ ALTER TABLE p ADD COLUMN extra TEXT;
 	schema.DefineUpgrade(3, `ALTER TABLE p ADD COLUMN extra2 TEXT;`)
 	db, err = Open(OpenOptions{
 		File:          suite.DBFile,
+		DriverName:    "sqlite3",
 		BackupDir:     "",
 		Schema:        schema,
 		VersionStorer: vs,
@@ -247,6 +249,7 @@ ALTER TABLE p ADD COLUMN extra TEXT;
 	schema.DefineUpgrade(4, `ALTER TABLE p ADD COLUMN extra3 TEXT;`)
 	db, err = Open(OpenOptions{
 		File:          suite.DBFile,
+		DriverName:    "sqlite3",
 		BackupDir:     backupDir,
 		Schema:        schema,
 		VersionStorer: vs,
@@ -281,7 +284,7 @@ ALTER TABLE p ADD COLUMN extra TEXT;
 		},
 	}
 
-	db, err := Open(OpenOptions{File: suite.DBFile, Schema: schema, VersionStorer: legacy})
+	db, err := Open(OpenOptions{File: suite.DBFile, Schema: schema, VersionStorer: legacy, DriverName: "sqlite3"})
 	suite.Require().NoError(err)
 
 	suite.Require().Equal(1, legacy.FallbackReader.(*mockReader).callAppId)
@@ -301,7 +304,7 @@ ALTER TABLE p ADD COLUMN extra TEXT;
 	suite.Require().NoError(db.Close())
 
 	// Re-open to make sure LegacyMetadata is not called twice
-	_, err = Open(OpenOptions{File: suite.DBFile, Schema: schema, VersionStorer: legacy})
+	_, err = Open(OpenOptions{File: suite.DBFile, Schema: schema, VersionStorer: legacy, DriverName: "sqlite3"})
 	suite.Require().NoError(err)
 
 	suite.Require().Equal(1, legacy.FallbackReader.(*mockReader).callAppId)

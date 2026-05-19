@@ -20,7 +20,7 @@ import _ "github.com/mattn/go-sqlite3" // cgo-based, registered as "sqlite3"
 import _ "modernc.org/sqlite"          // pure Go, registered as "sqlite"
 ```
 
-Then pass the registered driver name via `OpenOptions.DriverName`. If `DriverName` is empty, `"sqlite3"` is used.
+Then pass the registered driver name via `OpenOptions.DriverName`. The field is required — `Open` returns an error if it is empty.
 
 ## Usage
 
@@ -41,8 +41,9 @@ schema := localdb.NewSqlSchema(`CREATE TABLE users (
 )`)
 
 db, err := localdb.Open(localdb.OpenOptions{
-    File:   "app.db",
-    Schema: schema,
+    File:       "app.db",
+    Schema:     schema,
+    DriverName: "sqlite3",
 })
 if err != nil {
     log.Fatal(err)
@@ -123,7 +124,7 @@ err := db.WrapTx(func(tx sqlx.Ext) error {
 
 ## Upgrading from v1
 
-v2 is a breaking release that removes the bundled `github.com/mattn/go-sqlite3` import. To upgrade:
+v2 is a breaking release that removes the bundled `github.com/mattn/go-sqlite3` import and requires callers to choose a driver explicitly. To upgrade:
 
 1. Change the import path from `github.com/josephvusich/localdb` to `github.com/josephvusich/localdb/v2`.
 2. Add a blank import of your chosen SQLite driver to your `main` package (or any package that runs at startup):
@@ -134,7 +135,17 @@ v2 is a breaking release that removes the bundled `github.com/mattn/go-sqlite3` 
 
    Without this, `Open` will fail at runtime with `sql: unknown driver "sqlite3" (forgotten import?)`.
 
-3. If you want a different driver, register it under your chosen name and pass it via `OpenOptions.DriverName`. For example, to use `modernc.org/sqlite` (pure Go, no cgo):
+3. Set `OpenOptions.DriverName` on every `Open` call. The field is required; `Open` returns an error if it is empty. For the v1 behavior:
+
+   ```go
+   db, err := localdb.Open(localdb.OpenOptions{
+       File:       "app.db",
+       Schema:     schema,
+       DriverName: "sqlite3",
+   })
+   ```
+
+4. To use a different driver, register it under your chosen name and pass that name. For example, `modernc.org/sqlite` (pure Go, no cgo) registers itself as `"sqlite"`:
 
    ```go
    import _ "modernc.org/sqlite"
@@ -142,7 +153,7 @@ v2 is a breaking release that removes the bundled `github.com/mattn/go-sqlite3` 
    db, err := localdb.Open(localdb.OpenOptions{
        File:       "app.db",
        Schema:     schema,
-       DriverName: "sqlite", // modernc.org/sqlite registers itself as "sqlite"
+       DriverName: "sqlite",
    })
    ```
 
