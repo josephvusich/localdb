@@ -2,6 +2,7 @@ package localdb
 
 import (
 	"fmt"
+	"net/url"
 	"path/filepath"
 	"testing"
 
@@ -49,13 +50,24 @@ func (suite *DBTestSuite) TestAssembleDSN() {
 	suite.Require().NoError(err)
 	suite.Require().Equal("test.db?foo=bar", result)
 
-	result, err = assembleDSN("test.db", map[string]string{"fizz": "buzz"})
+	result, err = assembleDSN("test.db", url.Values{"fizz": {"buzz"}})
 	suite.Require().NoError(err)
 	suite.Require().Equal("test.db?fizz=buzz", result)
 
-	result, err = assembleDSN("test.db?foo=bar", map[string]string{"fizz": "buzz"})
+	result, err = assembleDSN("test.db?foo=bar", url.Values{"fizz": {"buzz"}})
 	suite.Require().NoError(err)
 	suite.Require().Equal("test.db?fizz=buzz&foo=bar", result)
+
+	// Multiple values under one key (modernc-style _pragma) round-trip
+	// and merge with baked-in values from the path.
+	result, err = assembleDSN("test.db?_pragma=foreign_keys(on)", url.Values{
+		"_pragma": {"busy_timeout(250)", "journal_mode(wal)"},
+	})
+	suite.Require().NoError(err)
+	suite.Require().Equal(
+		"test.db?_pragma=foreign_keys%28on%29&_pragma=busy_timeout%28250%29&_pragma=journal_mode%28wal%29",
+		result,
+	)
 }
 
 func (suite *DBTestSuite) TestStmtCache() {

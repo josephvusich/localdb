@@ -168,7 +168,13 @@ type OpenOptions struct {
 	// SQLite driver's documentation (e.g. github.com/mattn/go-sqlite3
 	// or modernc.org/sqlite). These are added to any baked-in options
 	// in File.
-	DSNOptions map[string]string
+	//
+	// url.Values is used (rather than map[string]string) so callers
+	// can pass multiple values under one key, which modernc.org/sqlite
+	// requires for multiple connection-time PRAGMAs:
+	//
+	//	url.Values{"_pragma": {"busy_timeout(250)", "journal_mode(wal)"}}
+	DSNOptions url.Values
 
 	// MaxOpenConns sets the maximum number of open connections to the database.
 	// If MaxOpenConns <= -1, there is no limit. If MaxOpenConns == 0, the limit will be
@@ -183,10 +189,10 @@ type OpenOptions struct {
 	DriverName string
 }
 
-func assembleDSN(inputDSN string, dsnOpts map[string]string) (dsn string, err error) {
+func assembleDSN(inputDSN string, dsnOpts url.Values) (dsn string, err error) {
 	parts := strings.SplitN(inputDSN, "?", 2)
 
-	if len(parts) == 1 && (dsnOpts == nil || len(dsnOpts) == 0) {
+	if len(parts) == 1 && len(dsnOpts) == 0 {
 		return inputDSN, nil
 	}
 
@@ -200,8 +206,8 @@ func assembleDSN(inputDSN string, dsnOpts map[string]string) (dsn string, err er
 		flags = url.Values{}
 	}
 
-	if dsnOpts != nil {
-		for k, v := range dsnOpts {
+	for k, vs := range dsnOpts {
+		for _, v := range vs {
 			flags.Add(k, v)
 		}
 	}
