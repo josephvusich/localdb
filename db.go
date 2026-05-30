@@ -187,6 +187,19 @@ type OpenOptions struct {
 	// package, e.g. _ "github.com/mattn/go-sqlite3" registers
 	// "sqlite3"; _ "modernc.org/sqlite" registers "sqlite").
 	DriverName string
+
+	// OnOpen, if non-nil, is invoked once after the underlying connection
+	// is open and DSNOptions have been applied, but before any schema
+	// initialization (including the application_id / user_version reads
+	// described above). Use this for PRAGMAs whose ordering must precede
+	// schema writes — for example, PRAGMA journal_mode = WAL, which must
+	// run after PRAGMA page_size has been queued via DSNOptions but
+	// before the first CREATE TABLE so the new file is created with the
+	// requested page size.
+	//
+	// If OnOpen returns an error, Open closes the database and returns
+	// the error.
+	OnOpen func(Handle) error
 }
 
 func assembleDSN(inputDSN string, dsnOpts url.Values) (dsn string, err error) {
@@ -268,6 +281,12 @@ func Open(options OpenOptions) (*DB, error) {
 	vs := options.VersionStorer
 	if vs == nil {
 		vs = &SqliteVersion{}
+	}
+
+	if options.OnOpen != nil {
+		if err := options.OnOpen(db.Handle()); err != nil {
+			return nil, fmt.Errorf("OnOpen hook: %w", err)
+		}
 	}
 
 	if err = initDB(db, options, vs); err != nil {

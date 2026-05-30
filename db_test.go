@@ -1,8 +1,11 @@
 package localdb
 
 import (
+	"encoding/binary"
 	"fmt"
+	"io"
 	"net/url"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -336,4 +339,117 @@ func (m *mockReader) GetApplicationId(tx sqlx.Queryer) (int32, error) {
 func (m *mockReader) GetUserVersion(tx sqlx.Queryer) (int32, error) {
 	m.callVersion++
 	return 2, nil
+}
+
+// onDiskPageSize returns the SQLite file's actual on-disk page size by reading
+// the file header (bytes 16-17, big-endian uint16, with the stored value 1
+// representing 65536). This is the authoritative source of truth — unlike
+// PRAGMA page_size, which can report a queued value that was never written.
+func onDiskPageSize(t *testing.T, file string) int {
+	t.Helper()
+	f, err := os.Open(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	var hdr [18]byte
+	if _, err := io.ReadFull(f, hdr[:]); err != nil {
+		t.Fatal(err)
+	}
+	if string(hdr[:16]) != "SQLite format 3\x00" {
+		t.Fatalf("not a SQLite file: %q", hdr[:16])
+	}
+	ps := int(binary.BigEndian.Uint16(hdr[16:18]))
+	if ps == 1 {
+		ps = 65536
+	}
+	return ps
+}
+
+// TestOnOpenSequencesPageSizeBeforeWAL is the gating evidence that the OnOpen
+// hook actually causes page_size to take effect on a fresh database. It opens
+// with page_size(65536) in DSN, switches to WAL via OnOpen, then reads the
+// file header directly to confirm the on-disk page size is 64 KiB.
+func TestOnOpenSequencesPageSizeBeforeWAL(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "test.db")
+
+	schema := NewSqlSchema(
+		`CREATE TABLE t (id INTEGER PRIMARY KEY, payload BLOB) STRICT;`)
+
+	db, err := Open(OpenOptions{
+		File:       file,
+		Schema:     schema,
+		DriverName: "sqlite",
+		DSNOptions: url.Values{
+			"_pragma": []string{"page_size(65536)"},
+		},
+		OnOpen: func(h Handle) error {
+			var mode string
+			if err := sqlx.Get(h, &mode, "PRAGMA journal_mode = WAL"); err != nil {
+				return err
+			}
+			if mode != "wal" {
+				return fmt.Errorf("journal_mode = %q; want wal", mode)
+			}
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := db.Handle().Exec(`INSERT INTO t (payload) VALUES (randomblob(8192))`); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	if ps := onDiskPageSize(t, file); ps != 65536 {
+		t.Errorf("on-disk page_size = %d; want 65536", ps)
+	}
+}
+
+// TestDSNJournalModeWALDefeatsPageSize documents the upstream modernc.org/sqlite
+// behavior that motivates the OnOpen hook: when both page_size and
+// journal_mode=wal are in DSN _pragma, the driver alphabetizes them and
+// applies journal_mode first, which creates the file at the default page size
+// before page_size takes effect.
+//
+// This test t.Skips if upstream ever fixes the ordering — that's the signal
+// that the OnOpen workaround can be retired.
+func TestDSNJournalModeWALDefeatsPageSize(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "test.db")
+	schema := NewSqlSchema(
+		`CREATE TABLE t (id INTEGER PRIMARY KEY, payload BLOB) STRICT;`)
+
+	db, err := Open(OpenOptions{
+		File:       file,
+		Schema:     schema,
+		DriverName: "sqlite",
+		DSNOptions: url.Values{
+			"_pragma": []string{
+				"page_size(65536)",
+				"journal_mode(wal)",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Handle().Exec(`INSERT INTO t (payload) VALUES (randomblob(8192))`); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	ps := onDiskPageSize(t, file)
+	if ps == 65536 {
+		t.Skip("upstream modernc.org/sqlite no longer reorders pragmas; " +
+			"the OnOpen workaround in consumers can be simplified")
+	}
+	if ps != 4096 {
+		t.Errorf("on-disk page_size = %d; want 4096 (default — upstream ordering forces it)", ps)
+	}
 }
